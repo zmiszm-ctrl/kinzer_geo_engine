@@ -1,0 +1,11 @@
+[project]
+entrypoint = "index.html"
+requires = ["nodejs-24"]
+
+[dev]
+build = []
+run = ["python3", "-m", "http.server", "5000", "--directory", "."]
+
+[deploy]
+build = []
+run = ["python3", "-m", "http.server", "5000", "--directory", "."]
