@@ -1,11 +1,15 @@
 [project]
-entrypoint = "index.html"
-requires = ["nodejs-24"]
+requires = [ "nodejs-24" ]
+template = "nextjs"
+version = "0.0.18"
+appliedPatches = [ ]
 
 [dev]
-build = []
-run = ["python3", "-m", "http.server", "5000", "--directory", "."]
+build = [ "bash", "./scripts/prepare.sh" ]
+run = [ "bash", "./scripts/dev.sh" ]
+deps = [ "git" ]
 
 [deploy]
-build = []
-run = ["python3", "-m", "http.server", "5000", "--directory", "."]
+build = [ "bash", "./scripts/build.sh" ]
+run = [ "bash", "./scripts/start.sh" ]
+deps = [ "git" ]
