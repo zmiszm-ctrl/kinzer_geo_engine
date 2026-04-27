@@ -94,7 +94,7 @@ function NavItemComponent({ item, depth = 0 }: { item: NavItem; depth?: number }
       >
         <span className="opacity-40">{item.icon}</span>
         <span>{item.label}</span>
-        <span className="ml-auto text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">即将推出</span>
+        <span className="ml-auto text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">高级订阅</span>
       </div>
     );
   }
