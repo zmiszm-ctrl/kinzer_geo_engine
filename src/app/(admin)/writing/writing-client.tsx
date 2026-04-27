@@ -10,6 +10,8 @@ import {
   Loader2,
   FileText,
   PenTool,
+  Minus,
+  Plus,
 } from 'lucide-react';
 
 
@@ -51,6 +53,7 @@ export function WritingPage({ intents, intentTypes }: Props) {
   const [selectedIntentIds, setSelectedIntentIds] = useState<Set<string>>(new Set());
   const [selectedStyles, setSelectedStyles] = useState<Set<StyleId>>(new Set(['xiaohongshu']));
   const [customRequirements, setCustomRequirements] = useState('');
+  const [articleCount, setArticleCount] = useState(1);
   const [generating, setGenerating] = useState(false);
   const [generatedContents, setGeneratedContents] = useState<
     { style: StyleId; title: string; content: string; saved: boolean }[]
@@ -109,6 +112,7 @@ export function WritingPage({ intents, intentTypes }: Props) {
             style: styleId,
             style_name: styleInfo.name,
             custom_requirements: customRequirements,
+            article_count: articleCount,
           }),
           signal: controller.signal,
         });
@@ -129,10 +133,25 @@ export function WritingPage({ intents, intentTypes }: Props) {
           }
         }
 
-        const titleMatch = fullContent.match(/^#\s*(.+)/m);
-        const title = titleMatch ? titleMatch[1] : selectedIntents[0].name;
+        // Split by "---" separator for multi-article results
+        const articles = fullContent
+          .split(/\n*---\n*/)
+          .map((a) => a.trim())
+          .filter((a) => a.length > 0);
 
-        results.push({ style: styleId, title, content: fullContent, saved: false });
+        if (articles.length > 1) {
+          // Multiple articles returned
+          for (const article of articles) {
+            const titleMatch = article.match(/^#\s*(.+)/m);
+            const title = titleMatch ? titleMatch[1] : selectedIntents[0].name;
+            results.push({ style: styleId, title, content: article, saved: false });
+          }
+        } else {
+          // Single article
+          const titleMatch = fullContent.match(/^#\s*(.+)/m);
+          const title = titleMatch ? titleMatch[1] : selectedIntents[0].name;
+          results.push({ style: styleId, title, content: fullContent, saved: false });
+        }
       } catch (e: unknown) {
         if (e instanceof Error && e.name !== 'AbortError') {
           console.error(e);
@@ -153,7 +172,7 @@ export function WritingPage({ intents, intentTypes }: Props) {
     setTimeout(() => {
       resultRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
-  }, [selectedIntentIds, selectedStyles, intents, customRequirements]);
+  }, [selectedIntentIds, selectedStyles, intents, customRequirements, articleCount]);
 
   const handleCopy = async (content: string, idx: number) => {
     await navigator.clipboard.writeText(content);
@@ -307,11 +326,43 @@ export function WritingPage({ intents, intentTypes }: Props) {
             </div>
           </div>
 
+          {/* Article Count */}
+          <div className="border border-border rounded-xl p-5 bg-card">
+            <h3 className="text-sm font-semibold text-foreground mb-3">生成数量</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              每种风格生成的文章数量，多篇文章将从不同角度撰写
+            </p>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setArticleCount((c) => Math.max(1, c - 1))}
+                disabled={articleCount <= 1}
+              >
+                <Minus className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-lg font-semibold text-foreground w-8 text-center">
+                {articleCount}
+              </span>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setArticleCount((c) => Math.min(5, c + 1))}
+                disabled={articleCount >= 5}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+              <span className="text-xs text-muted-foreground">篇</span>
+            </div>
+          </div>
+
           {/* Custom Requirements */}
           <div className="border border-border rounded-xl p-5 bg-card">
             <h3 className="text-sm font-semibold text-foreground mb-3">补充要求</h3>
             <Textarea
-              placeholder="可选：输入对生成内容的额外要求，如重点突出某个产品特性、特定用词偏好..."
+              placeholder="可选：输入对生成内容的额外要求，如重点突出某个产品特性、特定用词偏好、目标受众等..."
               value={customRequirements}
               onChange={(e) => setCustomRequirements(e.target.value)}
               rows={3}
@@ -331,7 +382,9 @@ export function WritingPage({ intents, intentTypes }: Props) {
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            {generating ? '正在生成...' : `生成内容 (${selectedStyles.size}个风格)`}
+            {generating
+              ? '正在生成...'
+              : `生成内容 (${selectedStyles.size}种风格 × ${articleCount}篇)`}
           </Button>
         </div>
 

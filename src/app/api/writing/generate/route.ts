@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { LLMClient, Config } from 'coze-coding-dev-sdk';
+import { llmStream } from '@/lib/llm-provider';
 
 const STYLE_PROMPTS: Record<string, string> = {
   xiaohongshu: `小红书种草笔记风格：
@@ -54,7 +54,7 @@ const STYLE_PROMPTS: Record<string, string> = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { intents, style, style_name, custom_requirements } = body;
+    const { intents, style, style_name, custom_requirements, article_count } = body;
 
     if (!intents || !style) {
       return new Response(JSON.stringify({ error: 'intents and style are required' }), {
@@ -63,7 +63,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const count = Math.min(Math.max(Number(article_count) || 1, 1), 5);
     const stylePrompt = STYLE_PROMPTS[style] || STYLE_PROMPTS.xiaohongshu;
+
     const intentDescriptions = intents
       .map((i: { name: string; query?: string; keywords?: string[] }) => {
         let desc = `- 意图：${i.name}`;
@@ -73,44 +75,50 @@ export async function POST(request: NextRequest) {
       })
       .join('\n');
 
-    const systemPrompt = `你是一个专业的GEO内容写作专家。你需要根据给定的用户意图，生成符合特定平台风格的优质内容。
+    const systemPrompt = `你是一个专业的GEO（Generative Engine Optimization）推广内容写作引擎。你的核心任务是根据用户提供的意图关键词和写作风格，生成高质量的GEO推广文章。
 
-写作风格要求：
+## 你的专业能力
+1. 精通各平台内容分发算法和推荐机制
+2. 擅长在内容中自然融入关键词，提升AI搜索引擎的引用率和可见性
+3. 能够根据不同平台调性调整语言风格和排版格式
+4. 善于构建结构化内容，便于AI搜索引擎解析和引用
+
+## 写作风格要求
 ${stylePrompt}
 
-内容生成规范：
-1. 标题要包含核心关键词，吸引点击
-2. 内容要自然融入关键词，密度适中
-3. 结构化排版，便于AI搜索引擎解析
-4. 信息准确，有事实支撑
-5. 字数控制在800-1500字${custom_requirements ? `\n\n额外要求：${custom_requirements}` : ''}`;
+## 内容生成规范
+1. 每篇文章必须以 # 标题 开头
+2. 标题要包含核心关键词，具备吸引力和点击欲望
+3. 内容自然融入关键词，密度控制在2%-5%之间，避免堆砌
+4. 采用结构化排版（标题、段落、列表），便于AI搜索引擎解析
+5. 信息准确可信，适当引用数据或案例增强说服力
+6. 每篇文章字数控制在800-1500字
+7. 多篇文章之间要有差异化视角和切入点，避免内容雷同
+8. 结尾要有明确的行动引导（CTA），增强转化效果
+${custom_requirements ? `\n## 额外要求\n${custom_requirements}` : ''}`;
 
-    const userPrompt = `请根据以下用户意图，生成一篇${style_name}风格的内容：
+    const userPrompt = `请根据以下用户意图信息，生成${count > 1 ? count + '篇' : '1篇'}${style_name || ''}风格的GEO推广文章。
 
+## 用户意图
 ${intentDescriptions}
 
-请直接输出完整内容，以#标题开头。`;
-
-    const config = new Config();
-    const client = new LLMClient(config);
+## 输出要求
+${count > 1 ? `请生成${count}篇独立的推广文章，每篇文章之间用 "---" 分隔，每篇文章都必须以 # 标题 开头。多篇文章应从不同角度和切入点撰写，确保内容差异化。` : '请直接输出完整内容，以#标题开头。'}`;
 
     const messages = [
       { role: 'system' as const, content: systemPrompt },
       { role: 'user' as const, content: userPrompt },
     ];
 
-    const stream = client.stream(messages, {
-      model: 'doubao-seed-2-0-pro-260215',
-      temperature: 0.8,
-    });
-
     const encoder = new TextEncoder();
+    const stream = llmStream(messages, { temperature: 0.8, maxTokens: 4096 });
+
     const readable = new ReadableStream({
       async start(controller) {
         try {
           for await (const chunk of stream) {
             if (chunk.content) {
-              controller.enqueue(encoder.encode(chunk.content.toString()));
+              controller.enqueue(encoder.encode(chunk.content));
             }
           }
           controller.close();

@@ -172,6 +172,12 @@ pnpm add package-name
 # ✅ 添加开发依赖
 pnpm add -D package-name
 
+# ✅ 启动服务
+启动服务：pnpm run dev
+http://localhost:5000/
+
+
+
 # ❌ 禁止使用 npm 或 yarn
 # npm install  # 错误！
 # yarn add     # 错误！

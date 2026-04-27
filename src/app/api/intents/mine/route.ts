@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LLMClient, Config } from 'coze-coding-dev-sdk';
+import { llmInvoke } from '@/lib/llm-provider';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,9 +9,6 @@ export async function POST(request: NextRequest) {
     if (!keyword || typeof keyword !== 'string') {
       return NextResponse.json({ error: 'keyword is required' }, { status: 400 });
     }
-
-    const config = new Config();
-    const client = new LLMClient(config);
 
     const prompt = `你是一个专业的GEO（Generative Engine Optimization）意图挖掘专家。用户会给你一个行业关键词，你需要挖掘出与该关键词相关的用户搜索意图。
 
@@ -36,10 +33,7 @@ export async function POST(request: NextRequest) {
 6. 只返回JSON数组，不要其他文字`;
 
     const messages = [{ role: 'user' as const, content: prompt }];
-    const response = await client.invoke(messages, {
-      model: 'doubao-seed-2-0-pro-260215',
-      temperature: 0.7,
-    });
+    const response = await llmInvoke(messages, { temperature: 0.7 });
 
     let intents: { name: string; query: string; intent_type_code: string; keywords: string[] }[] = [];
 
@@ -53,7 +47,7 @@ export async function POST(request: NextRequest) {
       // parse failed
     }
 
-    return NextResponse.json({ intents });
+    return NextResponse.json({ intents, provider: response.provider, model: response.model });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -13,7 +13,7 @@ GEO（Generative Engine Optimization）引擎平台，帮助企业优化内容�
 - **Styling**: Tailwind CSS 4
 - **Database**: Supabase (PostgreSQL) + Drizzle ORM (仅 schema 定义)
 - **数据操作**: Supabase SDK (`@supabase/supabase-js`)
-- **LLM**: coze-coding-dev-sdk (`LLMClient`, 流式输出 `client.stream()`)
+- **LLM**: 自定义 Provider (`src/lib/llm-provider.ts`)，智谱优先 + DeepSeek 备选
 - **包管理器**: pnpm (严禁 npm/yarn)
 
 ## 目录结构
@@ -98,20 +98,32 @@ intent_types 预置 13 条记录:
 
 ## LLM 集成
 
+使用自定义 LLM Provider (`src/lib/llm-provider.ts`)，支持智谱优先 + DeepSeek 备选的自动降级策略。
+
+### 配置
+- **智谱 (ZhiPu)**: 模型 `glm-4.5-air`，API Key 来自 `BIGMODEL_API_KEY` 环境变量
+- **DeepSeek**: 模型 `deepseek-v4-flash`，API Key 来自 `DEEPSEEK_API_KEY` 环境变量
+- 密钥配置文件: `model.md`
+
+### 使用方式
 ```typescript
-import { LLMClient, Config } from 'coze-coding-dev-sdk';
+import { llmInvoke, llmStream } from '@/lib/llm-provider';
 
-// 非流式
-const client = new LLMClient(new Config());
-const response = await client.invoke(messages, { model: 'doubao-seed-2-0-pro-260215' });
-// response.content
+// 非流式 (智谱优先，失败自动切DeepSeek)
+const result = await llmInvoke(messages, { temperature: 0.7 });
+// result.content, result.provider, result.model
 
-// 流式
-const stream = client.stream(messages, { model: 'doubao-seed-2-0-pro-260215' });
+// 流式 (智谱优先，失败自动切DeepSeek)
+const stream = llmStream(messages, { temperature: 0.8, maxTokens: 4096 });
 for await (const chunk of stream) {
-  // chunk.content
+  // chunk.content, chunk.done, chunk.provider
 }
 ```
+
+### 降级策略
+1. 优先调用智谱 API
+2. 智谱调用失败（网络错误、HTTP 非200、流无内容）→ 自动切换 DeepSeek
+3. 所有提供商失败 → 抛出 "所有LLM提供商调用失败" 错误
 
 ## 设计系统
 
@@ -152,6 +164,6 @@ for await (const chunk of stream) {
 - 数据操作必须使用 Supabase SDK，不要用 Drizzle ORM
 
 ### LLM 调用失败
-- 导入名称是 `LLMClient`（不是 `LLM`）
-- 流式方法名是 `stream`（不是 `chatStream`）
-- 构造函数: `new LLMClient(new Config())`，模型在 invoke/stream 的第二个参数中指定
+- 使用 `llmInvoke` / `llmStream` 从 `@/lib/llm-provider` 导入
+- 智谱优先，DeepSeek 备选，自动降级
+- 密钥配置: `model.md` 文件或环境变量 `BIGMODEL_API_KEY` / `DEEPSEEK_API_KEY`
