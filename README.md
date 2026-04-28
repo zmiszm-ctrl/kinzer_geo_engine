@@ -1,369 +1,310 @@
-# projects
+# GEO 引擎平台
 
-这是一个基于 [Next.js 16](https://nextjs.org) + [shadcn/ui](https://ui.shadcn.com) 的全栈应用项目，由扣子编程 CLI 创建。
+> 帮助企业优化内容在 AI 搜索引擎中的可见性和引用率
+
+GEO（Generative Engine Optimization）引擎平台，通过意图挖掘、智能写作、多风格内容生成，帮助企业内容在 AI 搜索引擎中获得更高的引用率和可见性。
+
+## 技术栈
+
+| 类别 | 技术 | 版本 |
+|------|------|------|
+| 框架 | Next.js (App Router) | 16 |
+| 核心 | React | 19 |
+| 语言 | TypeScript | 5 (strict) |
+| UI 组件 | shadcn/ui (Radix UI) | — |
+| 样式 | Tailwind CSS | 4 |
+| 数据库 | Supabase (PostgreSQL) | — |
+| ORM | Drizzle ORM (仅 Schema 定义) | — |
+| 数据操作 | Supabase SDK | — |
+| LLM | 智谱 (ZhiPu) + DeepSeek (自动降级) | — |
+| 包管理 | pnpm | — |
+
+## 环境要求
+
+- **Node.js** ≥ 18
+- **pnpm** ≥ 8
+- **PostgreSQL** (通过 Supabase 托管)
 
 ## 快速开始
 
-### 启动开发服务器
+### 1. 安装依赖
 
 ```bash
-coze dev
+pnpm install
 ```
 
-启动后，在浏览器中打开 [http://localhost:5000](http://localhost:5000) 查看应用。
+### 2. 环境变量
 
-开发服务器支持热更新，修改代码后页面会自动刷新。
-
-### 构建生产版本
+在项目根目录创建 `.env.local` 文件：
 
 ```bash
-coze build
+# Supabase 数据库连接（由平台自动注入，无需手动配置）
+COZE_SUPABASE_URL=<your-supabase-url>
+COZE_SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+
+# LLM API Key（也可在系统设置 > 模型配置中管理）
+BIGMODEL_API_KEY=<your-zhipu-api-key>
+DEEPSEEK_API_KEY=<your-deepseek-api-key>
 ```
 
-### 启动生产服务器
+### 3. 数据库初始化
 
 ```bash
-coze start
+# 执行数据库迁移（创建所有表结构）
+npx coze-coding-ai db upgrade
+
+# 插入种子数据（意图分类体系 + 默认模型配置）
+# 详见下方"种子数据"章节
+```
+
+### 4. 开发模式
+
+```bash
+pnpm dev
+```
+
+服务启动在 `http://localhost:5000`，支持热更新。
+
+### 5. 生产构建与启动
+
+```bash
+pnpm build          # 构建生产版本
+pnpm start          # 启动生产服务
 ```
 
 ## 项目结构
 
 ```
-src/
-├── app/                      # Next.js App Router 目录
-│   ├── layout.tsx           # 根布局组件
-│   ├── page.tsx             # 首页
-│   ├── globals.css          # 全局样式（包含 shadcn 主题变量）
-│   └── [route]/             # 其他路由页面
-├── components/              # React 组件目录
-│   └── ui/                  # shadcn/ui 基础组件（优先使用）
-│       ├── button.tsx
-│       ├── card.tsx
-│       └── ...
-├── lib/                     # 工具函数库
-│   └── utils.ts            # cn() 等工具函数
-└── hooks/                   # 自定义 React Hooks（可选）
-
-server/
-├── index.ts                 # 自定义服务器入口
-├── tsconfig.json           # Server TypeScript 配置
-└── dist/                    # 编译输出目录（自动生成）
+├── src/
+│   ├── app/
+│   │   ├── (admin)/                # 管理后台布局组
+│   │   │   ├── layout.tsx          # 侧边栏 + 内容区布局
+│   │   │   ├── intent/             # 意图挖掘模块
+│   │   │   │   ├── types/          #   意图分类体系页面
+│   │   │   │   └── custom/         #   自定义意图页面
+│   │   │   ├── writing/            # GEO 智能写作页面
+│   │   │   └── settings/           # 系统设置
+│   │   │       └── model-config/   #   模型配置页面
+│   │   ├── api/                    # API 路由
+│   │   │   ├── intent-types/       #   意图分类 CRUD
+│   │   │   ├── intents/            #   意图 CRUD + AI 挖掘
+│   │   │   │   └── mine/           #     AI 意图挖掘
+│   │   │   ├── writing/            #   写作引擎
+│   │   │   │   ├── generate/       #     流式内容生成
+│   │   │   │   └── save/           #     保存生成内容
+│   │   │   └── settings/           #   系统设置
+│   │   │       └── model-config/   #     模型配置管理
+│   │   ├── layout.tsx              # 根布局
+│   │   ├── page.tsx                # 首页 (重定向到 /intent/types)
+│   │   └── globals.css             # 全局样式 + 设计令牌
+│   ├── components/
+│   │   ├── app-sidebar.tsx         # 导航侧边栏
+│   │   └── ui/                     # shadcn/ui 组件库
+│   ├── lib/
+│   │   ├── db.ts                   # Supabase 客户端
+│   │   ├── llm-provider.ts         # LLM Provider (智谱优先 + DeepSeek 降级)
+│   │   └── utils.ts                # 工具函数 (cn 等)
+│   └── storage/
+│       └── database/
+│           ├── shared/
+│           │   ├── schema.ts        # Drizzle 表结构定义 (仅迁移用)
+│           │   └── relations.ts     # Drizzle 关系定义
+│           └── supabase-client.ts   # Supabase SDK 客户端
+├── scripts/                        # 构建/启动脚本
+├── DESIGN_SYSTEM.md                # 设计规范文档
+├── GEO_ENGINE_ARCHITECTURE.md      # 架构文档
+├── AGENTS.md                       # 项目开发指南
+└── .coze                           # 构建运行配置
 ```
 
-## 核心开发规范
+## 功能模块
 
-### 1. 组件开发
+### 已实现 (MVP v0.1.0)
 
-**优先使用 shadcn/ui 基础组件**
+| 模块 | 功能 | 路径 |
+|------|------|------|
+| 意图分类体系 | 查看/新增/编辑分类，树形结构展示 | `/intent/types` |
+| 自定义意图 | AI 意图挖掘、手动创建、编辑、删除 | `/intent/custom` |
+| GEO 智能写作 | 选择意图 → 多风格流式生成 → 保存 | `/writing` |
+| 模型配置 | API Key 管理、模型选择、参数配置、优先级切换 | `/settings/model-config` |
 
-本项目已预装完整的 shadcn/ui 组件库，位于 `src/components/ui/` 目录。开发时应优先使用这些组件作为基础：
+### 规划中 (菜单已创建)
 
-```tsx
-// ✅ 推荐：使用 shadcn 基础组件
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+- 知识资产管理
+- 内容结构化引擎
+- 发布与链接管理
+- GEO 监测与分析
+- A/B 测试与迭代
 
-export default function MyComponent() {
-  return (
-    <Card>
-      <CardHeader>标题</CardHeader>
-      <CardContent>
-        <Input placeholder="输入内容" />
-        <Button>提交</Button>
-      </CardContent>
-    </Card>
-  );
+## API 接口
+
+| 方法 | 路径 | 功能 |
+|------|------|------|
+| POST | `/api/intent-types` | 创建意图分类 |
+| PUT | `/api/intent-types` | 更新意图分类 |
+| POST | `/api/intents` | 批量创建意图 |
+| PUT | `/api/intents` | 更新意图 |
+| DELETE | `/api/intents` | 删除意图 |
+| POST | `/api/intents/mine` | AI 意图挖掘 |
+| POST | `/api/writing/generate` | 流式内容生成 (SSE) |
+| POST | `/api/writing/save` | 保存生成内容 |
+| GET | `/api/settings/model-config` | 获取模型配置 |
+| PUT | `/api/settings/model-config` | 更新模型配置 |
+| POST | `/api/settings/model-config` | 测试模型连接 |
+
+## 数据库
+
+### 表结构
+
+| 表名 | 说明 | 初始记录 |
+|------|------|----------|
+| `intent_types` | 意图分类体系 | 13 条 (4 L1 + 9 L2) |
+| `intents` | 意图列表 | — |
+| `generated_contents` | 生成内容 | — |
+| `model_configs` | 模型配置 | 2 条 (智谱 + DeepSeek) |
+
+### 数据操作规范
+
+- **Schema 定义**：使用 Drizzle ORM (`src/storage/database/shared/schema.ts`)
+- **数据操作**：必须使用 Supabase SDK (`supabase.from('table').select()...`)
+- **禁止**：使用 Drizzle ORM 的 `db.select()` / `db.insert()` 等方法做数据操作
+- **迁移**：`npx coze-coding-ai db upgrade`
+- **RLS**：所有表已启用 RLS，后端使用 `service_role_key` 绕过
+
+### 种子数据
+
+`intent_types` 预置 13 条分类记录：
+
+**L1 分类 (4个)**：
+| 编码 | 名称 |
+|------|------|
+| `informational` | 信息型 |
+| `navigational` | 导航型 |
+| `commercial` | 商业型 |
+| `transactional` | 交易型 |
+
+**L2 子分类 (9个)**：
+| 编码 | 名称 | 父级 |
+|------|------|------|
+| `informational_understand` | 理解型 | informational |
+| `informational_explain` | 解释型 | informational |
+| `informational_compare` | 对比型 | informational |
+| `informational_howto` | 方法型 | informational |
+| `navigational_brand` | 品牌导航 | navigational |
+| `commercial_research` | 商业调研 | commercial |
+| `commercial_compare` | 商业对比 | commercial |
+| `transactional_buy` | 购买型 | transactional |
+| `transactional_download` | 下载型 | transactional |
+
+## LLM 集成
+
+### 架构
+
+系统使用自定义 LLM Provider (`src/lib/llm-provider.ts`)，支持智谱 + DeepSeek 双提供商自动降级。配置存储在数据库 `model_configs` 表中，运行时动态读取（60 秒缓存）。
+
+### 降级策略
+
+```
+请求 → 智谱 (priority=1) → 成功 → 返回
+                          → 失败 → DeepSeek (priority=2) → 成功 → 返回
+                                                            → 失败 → 抛出错误
+```
+
+### 代码使用
+
+```typescript
+import { llmInvoke, llmStream } from '@/lib/llm-provider';
+
+// 非流式调用
+const result = await llmInvoke(
+  [{ role: 'user', content: '你好' }],
+  { temperature: 0.7, maxTokens: 4096 }
+);
+console.log(result.content, result.provider, result.model);
+
+// 流式调用
+const stream = llmStream(messages, { temperature: 0.8 });
+for await (const chunk of stream) {
+  process.stdout.write(chunk.content);
 }
 ```
 
-**可用的 shadcn 组件清单**
+### 支持模型
 
-- 表单：`button`, `input`, `textarea`, `select`, `checkbox`, `radio-group`, `switch`, `slider`
-- 布局：`card`, `separator`, `tabs`, `accordion`, `collapsible`, `scroll-area`
-- 反馈：`alert`, `alert-dialog`, `dialog`, `toast`, `sonner`, `progress`
-- 导航：`dropdown-menu`, `menubar`, `navigation-menu`, `context-menu`
-- 数据展示：`table`, `avatar`, `badge`, `hover-card`, `tooltip`, `popover`
-- 其他：`calendar`, `command`, `carousel`, `resizable`, `sidebar`
+**智谱 (ZhiPu)**：
+| 模型 ID | 说明 |
+|---------|------|
+| `glm-4.5-air` | 均衡性价比，推荐日常使用 (默认) |
+| `glm-4.5` | 标准版，能力更全面 |
+| `glm-4.6` | 增强版，推理能力更强 |
+| `glm-4.7` | 最新版，旗舰级能力 |
+| `glm-5` | GLM-5 标准版 |
+| `glm-5-turbo` | GLM-5 快速版 |
+| `glm-5.1` | GLM-5.1 最新旗舰 |
 
-详见 `src/components/ui/` 目录下的具体组件实现。
+**DeepSeek**：
+| 模型 ID | 说明 |
+|---------|------|
+| `deepseek-v4-flash` | 快速响应，适合批量生成 (默认) |
+| `deepseek-v4-pro` | 深度推理，支持 Thinking Mode |
 
-### 2. 路由开发
+### Thinking Mode (DeepSeek)
 
-Next.js 使用文件系统路由，在 `src/app/` 目录下创建文件夹即可添加路由：
+DeepSeek V4 Pro 支持深度推理模式，可在系统设置 > 模型配置中开启：
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| `thinking` | `{ type: "enabled" }` | 开启深度推理 |
+| `reasoning_effort` | `low` / `medium` / `high` / `max` | 推理深度，越高质量越好但耗时越长 |
+
+## 设计规范
+
+遵循 `DESIGN_SYSTEM.md` 中的设计令牌：
+
+- **主色**：`#6366f1`
+- **风格**：低饱和高级灰阶、莫兰迪辅助色、极简圆角、软投影
+- **字体**：Inter → PingFang SC → Microsoft YaHei
+- **原则**：极简克制、留白充足、科技理性、企业级稳重
+
+## 常用命令
 
 ```bash
-# 创建新路由 /about
-src/app/about/page.tsx
+# 开发
+pnpm install              # 安装依赖
+pnpm dev                  # 启动开发服务 (端口 5000)
 
-# 创建动态路由 /posts/[id]
-src/app/posts/[id]/page.tsx
+# 构建
+pnpm build                # 生产构建
+pnpm start                # 启动生产服务
 
-# 创建路由组（不影响 URL）
-src/app/(marketing)/about/page.tsx
+# 代码质量
+pnpm lint                 # ESLint 检查
+pnpm ts-check             # TypeScript 类型检查
 
-# 创建 API 路由
-src/app/api/users/route.ts
+# 数据库
+npx coze-coding-ai db upgrade   # 执行数据库迁移
+
+# 清理
+rm -rf .next              # 清除构建缓存 (下次 dev/build 自动重建)
 ```
 
-**页面组件示例**
+## 常见问题
 
-```tsx
-// src/app/about/page.tsx
-import { Button } from '@/components/ui/button';
+### 数据库连接失败
 
-export const metadata = {
-  title: '关于我们',
-  description: '关于页面描述',
-};
+确认环境变量 `COZE_SUPABASE_URL` 和 `COZE_SUPABASE_SERVICE_ROLE_KEY` 存在。数据操作必须使用 Supabase SDK，不要使用 Drizzle ORM 的 `db.select()` 等方法。
 
-export default function AboutPage() {
-  return (
-    <div>
-      <h1>关于我们</h1>
-      <Button>了解更多</Button>
-    </div>
-  );
-}
-```
+### LLM 调用失败
 
-**动态路由示例**
+1. 检查系统设置 > 模型配置中的 API Key 是否正确
+2. 使用「测试连接」功能验证 API Key 可用性
+3. 确认至少一个提供商已启用
+4. 查看控制台日志中的 `[LLM]` 前缀错误信息
 
-```tsx
-// src/app/posts/[id]/page.tsx
-export default async function PostPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params;
+### 端口冲突
 
-  return <div>文章 ID: {id}</div>;
-}
-```
+服务默认运行在 5000 端口。如需修改，编辑 `.coze` 配置文件中的 `run` 命令。
 
-**API 路由示例**
+## 许可证
 
-```tsx
-// src/app/api/users/route.ts
-import { NextResponse } from 'next/server';
-
-export async function GET() {
-  return NextResponse.json({ users: [] });
-}
-
-export async function POST(request: Request) {
-  const body = await request.json();
-  return NextResponse.json({ success: true });
-}
-```
-
-### 3. 依赖管理
-
-**必须使用 pnpm 管理依赖**
-
-```bash
-# ✅ 安装依赖
-pnpm install
-
-# ✅ 添加新依赖
-pnpm add package-name
-
-# ✅ 添加开发依赖
-pnpm add -D package-name
-
-# ✅ 启动服务
-启动服务：pnpm run dev
-http://localhost:5000/
-
-
-
-# ❌ 禁止使用 npm 或 yarn
-# npm install  # 错误！
-# yarn add     # 错误！
-```
-
-项目已配置 `preinstall` 脚本，使用其他包管理器会报错。
-
-### 4. 样式开发
-
-**使用 Tailwind CSS v4**
-
-本项目使用 Tailwind CSS v4 进行样式开发，并已配置 shadcn 主题变量。
-
-```tsx
-// 使用 Tailwind 类名
-<div className="flex items-center gap-4 p-4 rounded-lg bg-background">
-  <Button className="bg-primary text-primary-foreground">
-    主要按钮
-  </Button>
-</div>
-
-// 使用 cn() 工具函数合并类名
-import { cn } from '@/lib/utils';
-
-<div className={cn(
-  "base-class",
-  condition && "conditional-class",
-  className
-)}>
-  内容
-</div>
-```
-
-**主题变量**
-
-主题变量定义在 `src/app/globals.css` 中，支持亮色/暗色模式：
-
-- `--background`, `--foreground`
-- `--primary`, `--primary-foreground`
-- `--secondary`, `--secondary-foreground`
-- `--muted`, `--muted-foreground`
-- `--accent`, `--accent-foreground`
-- `--destructive`, `--destructive-foreground`
-- `--border`, `--input`, `--ring`
-
-### 5. 表单开发
-
-推荐使用 `react-hook-form` + `zod` 进行表单开发：
-
-```tsx
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import * as z from 'zod';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-
-const formSchema = z.object({
-  username: z.string().min(2, '用户名至少 2 个字符'),
-  email: z.string().email('请输入有效的邮箱'),
-});
-
-export default function MyForm() {
-  const form = useForm({
-    resolver: zodResolver(formSchema),
-    defaultValues: { username: '', email: '' },
-  });
-
-  const onSubmit = (data: z.infer<typeof formSchema>) => {
-    console.log(data);
-  };
-
-  return (
-    <form onSubmit={form.handleSubmit(onSubmit)}>
-      <Input {...form.register('username')} />
-      <Input {...form.register('email')} />
-      <Button type="submit">提交</Button>
-    </form>
-  );
-}
-```
-
-### 6. 数据获取
-
-**服务端组件（推荐）**
-
-```tsx
-// src/app/posts/page.tsx
-async function getPosts() {
-  const res = await fetch('https://api.example.com/posts', {
-    cache: 'no-store', // 或 'force-cache'
-  });
-  return res.json();
-}
-
-export default async function PostsPage() {
-  const posts = await getPosts();
-
-  return (
-    <div>
-      {posts.map(post => (
-        <div key={post.id}>{post.title}</div>
-      ))}
-    </div>
-  );
-}
-```
-
-**客户端组件**
-
-```tsx
-'use client';
-
-import { useEffect, useState } from 'react';
-
-export default function ClientComponent() {
-  const [data, setData] = useState(null);
-
-  useEffect(() => {
-    fetch('/api/data')
-      .then(res => res.json())
-      .then(setData);
-  }, []);
-
-  return <div>{JSON.stringify(data)}</div>;
-}
-```
-
-## 常见开发场景
-
-### 添加新页面
-
-1. 在 `src/app/` 下创建文件夹和 `page.tsx`
-2. 使用 shadcn 组件构建 UI
-3. 根据需要添加 `layout.tsx` 和 `loading.tsx`
-
-### 创建业务组件
-
-1. 在 `src/components/` 下创建组件文件（非 UI 组件）
-2. 优先组合使用 `src/components/ui/` 中的基础组件
-3. 使用 TypeScript 定义 Props 类型
-
-### 添加全局状态
-
-推荐使用 React Context 或 Zustand：
-
-```tsx
-// src/lib/store.ts
-import { create } from 'zustand';
-
-interface Store {
-  count: number;
-  increment: () => void;
-}
-
-export const useStore = create<Store>((set) => ({
-  count: 0,
-  increment: () => set((state) => ({ count: state.count + 1 })),
-}));
-```
-
-### 集成数据库
-
-推荐使用 Prisma 或 Drizzle ORM，在 `src/lib/db.ts` 中配置。
-
-## 技术栈
-
-- **框架**: Next.js 16.1.1 (App Router)
-- **UI 组件**: shadcn/ui (基于 Radix UI)
-- **样式**: Tailwind CSS v4
-- **表单**: React Hook Form + Zod
-- **图标**: Lucide React
-- **字体**: Geist Sans & Geist Mono
-- **包管理器**: pnpm 9+
-- **TypeScript**: 5.x
-
-## 参考文档
-
-- [Next.js 官方文档](https://nextjs.org/docs)
-- [shadcn/ui 组件文档](https://ui.shadcn.com)
-- [Tailwind CSS 文档](https://tailwindcss.com/docs)
-- [React Hook Form](https://react-hook-form.com)
-
-## 重要提示
-
-1. **必须使用 pnpm** 作为包管理器
-2. **优先使用 shadcn/ui 组件** 而不是从零开发基础组件
-3. **遵循 Next.js App Router 规范**，正确区分服务端/客户端组件
-4. **使用 TypeScript** 进行类型安全开发
-5. **使用 `@/` 路径别名** 导入模块（已配置）
+Private - All Rights Reserved

@@ -25,3 +25,4 @@ response = client.chat.completions.create(
 2、智谱大模型接口
 BIGMODEL_API_KEY=b57f666d002c4819b7a37201eb55b7b5.X7ZupcNr37dANz62
 BIGMODEL_MODEL=glm-4.5-air
+

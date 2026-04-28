@@ -57,8 +57,6 @@ const ZHIPU_MODELS = [
 ];
 
 const REASONING_EFFORT_OPTIONS = [
-  { value: 'low', label: 'Low', desc: '快速推理' },
-  { value: 'medium', label: 'Medium', desc: '均衡推理' },
   { value: 'high', label: 'High', desc: '深度推理' },
   { value: 'max', label: 'Max', desc: '极致推理' },
 ];
