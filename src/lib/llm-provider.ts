@@ -1,7 +1,9 @@
 /**
- * LLM Provider - 智谱优先，DeepSeek 备选
+ * LLM Provider - 动态读取数据库配置，智谱/DeepSeek 自动降级
  * 支持流式（SSE）和非流式调用
  */
+
+import { supabase } from '@/lib/db';
 
 // ── Types ──────────────────────────────────────────────
 interface ChatMessage {
@@ -27,34 +29,131 @@ interface ProviderConfig {
   baseURL: string;
   apiKey: string;
   model: string;
+  thinkingEnabled: boolean;
+  reasoningEffort: string | null;
+  temperature: number | null;
+  maxTokens: number | null;
+  topP: number | null;
+  frequencyPenalty: number | null;
+  presencePenalty: number | null;
 }
 
-// ── Provider configs ───────────────────────────────────
-const ZHIPU_CONFIG: ProviderConfig = {
-  name: 'zhipu',
-  baseURL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-  apiKey: process.env.BIGMODEL_API_KEY || 'b57f666d002c4819b7a37201eb55b7b5.X7ZupcNr37dANz62',
-  model: process.env.BIGMODEL_MODEL || 'glm-4.5-air',
-};
+// ── Fallback defaults (used when DB is unreachable) ────
+const FALLBACK_CONFIGS: ProviderConfig[] = [
+  {
+    name: 'zhipu',
+    baseURL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    apiKey: 'b57f666d002c4819b7a37201eb55b7b5.X7ZupcNr37dANz62',
+    model: 'glm-4.5-air',
+    thinkingEnabled: false,
+    reasoningEffort: null,
+    temperature: null,
+    maxTokens: null,
+    topP: null,
+    frequencyPenalty: null,
+    presencePenalty: null,
+  },
+  {
+    name: 'deepseek',
+    baseURL: 'https://api.deepseek.com/chat/completions',
+    apiKey: 'sk-450b6d7ce1324528bb4979e887192ca1',
+    model: 'deepseek-v4-flash',
+    thinkingEnabled: false,
+    reasoningEffort: null,
+    temperature: null,
+    maxTokens: null,
+    topP: null,
+    frequencyPenalty: null,
+    presencePenalty: null,
+  },
+];
 
-const DEEPSEEK_CONFIG: ProviderConfig = {
-  name: 'deepseek',
-  baseURL: 'https://api.deepseek.com/chat/completions',
-  apiKey: process.env.DEEPSEEK_API_KEY || 'sk-450b6d7ce1324528bb4979e887192ca1',
-  model: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
-};
+// ── Load config from DB with cache ─────────────────────
+let cachedProviders: ProviderConfig[] | null = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 60_000; // 60 seconds
 
-const PROVIDERS = [ZHIPU_CONFIG, DEEPSEEK_CONFIG];
+async function loadProviders(): Promise<ProviderConfig[]> {
+  const now = Date.now();
+  if (cachedProviders && now - cacheTimestamp < CACHE_TTL) {
+    return cachedProviders;
+  }
 
-// ── Helper: parse SSE stream from fetch Response ───────
-function parseSSELines(text: string): string[] {
-  return text
-    .split('\n')
-    .filter((line) => line.startsWith('data: '))
-    .map((line) => line.slice(6).trim())
-    .filter((data) => data !== '[DONE]' && data.length > 0);
+  try {
+    const { data, error } = await supabase
+      .from('model_configs')
+      .select('*')
+      .eq('enabled', true)
+      .order('priority', { ascending: true });
+
+    if (error || !data || data.length === 0) {
+      console.warn('[LLM] DB config unavailable, using fallback defaults');
+      return FALLBACK_CONFIGS;
+    }
+
+    const providers: ProviderConfig[] = data.map((row: Record<string, unknown>) => ({
+      name: row.provider as string,
+      baseURL: (row.base_url as string) || (row.provider === 'zhipu'
+        ? 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+        : 'https://api.deepseek.com/chat/completions'),
+      apiKey: (row.api_key as string) || '',
+      model: row.model as string,
+      thinkingEnabled: row.thinking_enabled as boolean,
+      reasoningEffort: row.reasoning_effort as string | null,
+      temperature: row.temperature as number | null,
+      maxTokens: row.max_tokens as number | null,
+      topP: row.top_p as number | null,
+      frequencyPenalty: row.frequency_penalty as number | null,
+      presencePenalty: row.presence_penalty as number | null,
+    }));
+
+    cachedProviders = providers;
+    cacheTimestamp = now;
+    return providers;
+  } catch {
+    console.warn('[LLM] DB config error, using fallback defaults');
+    return FALLBACK_CONFIGS;
+  }
 }
 
+/** Clear provider cache - call after config update */
+export function clearProviderCache(): void {
+  cachedProviders = null;
+  cacheTimestamp = 0;
+}
+
+// ── Build request body ─────────────────────────────────
+function buildRequestBody(
+  provider: ProviderConfig,
+  messages: ChatMessage[],
+  options?: { temperature?: number; maxTokens?: number }
+): Record<string, unknown> {
+  const temperature = options?.temperature ?? provider.temperature ?? 0.7;
+  const maxTokens = options?.maxTokens ?? provider.maxTokens ?? 4096;
+
+  const body: Record<string, unknown> = {
+    model: provider.model,
+    messages,
+    temperature,
+    max_tokens: maxTokens,
+  };
+
+  if (provider.topP !== null) body.top_p = provider.topP;
+  if (provider.frequencyPenalty !== null) body.frequency_penalty = provider.frequencyPenalty;
+  if (provider.presencePenalty !== null) body.presence_penalty = provider.presencePenalty;
+
+  // DeepSeek Thinking Mode
+  if (provider.name === 'deepseek' && provider.thinkingEnabled) {
+    body.thinking = { type: 'enabled' };
+    if (provider.reasoningEffort) {
+      body.reasoning_effort = provider.reasoningEffort;
+    }
+  }
+
+  return body;
+}
+
+// ── Helper: extract delta content from SSE data ────────
 function extractDeltaContent(data: Record<string, unknown>, provider: string): string {
   try {
     const choices = data.choices as Array<{
@@ -67,10 +166,6 @@ function extractDeltaContent(data: Record<string, unknown>, provider: string): s
 
     // Stream delta
     if (choice.delta) {
-      // DeepSeek: skip reasoning_content, only return content
-      if (provider === 'deepseek') {
-        return choice.delta.content || '';
-      }
       return choice.delta.content || '';
     }
 
@@ -90,18 +185,14 @@ export async function llmInvoke(
   messages: ChatMessage[],
   options?: { temperature?: number; maxTokens?: number }
 ): Promise<LLMInvokeResult> {
-  const temperature = options?.temperature ?? 0.7;
-  const maxTokens = options?.maxTokens ?? 4096;
+  const providers = await loadProviders();
 
-  for (const provider of PROVIDERS) {
+  for (const provider of providers) {
+    if (!provider.apiKey) continue;
+
     try {
-      const body = JSON.stringify({
-        model: provider.model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-        stream: false,
-      });
+      const body = buildRequestBody(provider, messages, options);
+      body.stream = false;
 
       const response = await fetch(provider.baseURL, {
         method: 'POST',
@@ -109,14 +200,14 @@ export async function llmInvoke(
           'Content-Type': 'application/json',
           Authorization: `Bearer ${provider.apiKey}`,
         },
-        body,
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(60_000),
       });
 
       if (!response.ok) {
         const errText = await response.text().catch(() => '');
         console.warn(`[LLM] ${provider.name} invoke failed (${response.status}): ${errText.slice(0, 200)}`);
-        continue; // try next provider
+        continue;
       }
 
       const data = await response.json();
@@ -141,21 +232,16 @@ export async function* llmStream(
   messages: ChatMessage[],
   options?: { temperature?: number; maxTokens?: number }
 ): AsyncGenerator<LLMStreamChunk> {
-  const temperature = options?.temperature ?? 0.7;
-  const maxTokens = options?.maxTokens ?? 4096;
+  const providers = await loadProviders();
 
-  for (const provider of PROVIDERS) {
+  for (const provider of providers) {
+    if (!provider.apiKey) continue;
+
     let streamStarted = false;
-    let streamError = false;
 
     try {
-      const body = JSON.stringify({
-        model: provider.model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-        stream: true,
-      });
+      const body = buildRequestBody(provider, messages, options);
+      body.stream = true;
 
       const response = await fetch(provider.baseURL, {
         method: 'POST',
@@ -163,7 +249,7 @@ export async function* llmStream(
           'Content-Type': 'application/json',
           Authorization: `Bearer ${provider.apiKey}`,
         },
-        body,
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(120_000),
       });
 
@@ -188,9 +274,8 @@ export async function* llmStream(
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Process complete SSE events
         const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // keep incomplete line in buffer
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
@@ -237,23 +322,19 @@ export async function* llmStream(
         }
       }
 
-      // If we successfully got at least some content, we're done
       if (streamStarted) {
         yield { content: '', done: true, model: provider.model, provider: provider.name };
         return;
       }
 
-      // Stream completed but no content - try next provider
       console.warn(`[LLM] ${provider.name} stream completed but no content received`);
     } catch (err) {
       console.warn(`[LLM] ${provider.name} stream error:`, err instanceof Error ? err.message : err);
       if (streamStarted) {
-        // If we already received some content before error, yield what we have and stop
         yield { content: '', done: true, model: provider.model, provider: provider.name };
         return;
       }
-      streamError = true;
-      continue; // try next provider
+      continue;
     }
   }
 

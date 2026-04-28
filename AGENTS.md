@@ -27,6 +27,8 @@ GEO（Generative Engine Optimization）引擎平台，帮助企业优化内容�
 │   │   │   │   ├── types/      # 意图分类体系页面
 │   │   │   │   └── custom/     # 自定义意图页面
 │   │   │   └── writing/        # GEO 智能写作页面
+│   │   │   └── settings/       # 系统设置
+│   │   │       └── model-config/ # 模型配置页面
 │   │   ├── api/                # API 路由
 │   │   │   ├── intent-types/   # 意图分类 CRUD
 │   │   │   ├── intents/        # 意图 CRUD + 批量创建
@@ -70,6 +72,7 @@ pnpm ts-check         # TypeScript 类型检查
 - **intent_types**: 意图分类体系 (4个L1分类 + 9个L2子分类，内置数据)
 - **intents**: 意图列表 (AI挖掘 + 手动创建)
 - **generated_contents**: 生成内容存储
+- **model_configs**: 模型配置 (提供商、API Key、模型参数、优先级)
 
 ### 关键规则
 - **Schema 定义**: 使用 Drizzle ORM (`src/storage/database/shared/schema.ts`)
@@ -95,6 +98,9 @@ intent_types 预置 13 条记录:
 | `/api/intents/mine` | POST | AI 意图挖掘 (LLM) |
 | `/api/writing/generate` | POST | 流式内容生成 (LLM stream) |
 | `/api/writing/save` | POST | 保存生成内容 |
+| `/api/settings/model-config` | GET | 获取模型配置列表 |
+| `/api/settings/model-config` | PUT | 更新模型配置 |
+| `/api/settings/model-config` | POST | 测试模型连接 |
 
 ## LLM 集成
 
@@ -139,6 +145,7 @@ for await (const chunk of stream) {
 1. 意图分类体系管理 (查看、新增、编辑、新增子分类)
 2. 自定义意图管理 (AI挖掘、手动创建、编辑、删除)
 3. GEO 智能写作 (选择意图 → 多风格流式生成 → 保存)
+4. 模型配置 (API Key管理、模型选择、Thinking Mode、参数配置、优先级切换)
 
 ### 菜单已创建但未实现
 - 知识资产管理

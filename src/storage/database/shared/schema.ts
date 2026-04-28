@@ -80,3 +80,33 @@ export const generatedContents = pgTable(
 		index("generated_contents_created_at_idx").on(table.created_at),
 	]
 );
+
+// 模型配置表 - Model Configuration
+export const modelConfigs = pgTable(
+	"model_configs",
+	{
+		id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+		provider: varchar("provider", { length: 50 }).notNull().unique(),
+		api_key: text("api_key"),
+		model: varchar("model", { length: 100 }).notNull(),
+		base_url: varchar("base_url", { length: 500 }),
+		// Thinking Mode (DeepSeek)
+		thinking_enabled: boolean("thinking_enabled").default(false).notNull(),
+		reasoning_effort: varchar("reasoning_effort", { length: 20 }),
+		// Common model params
+		temperature: integer("temperature"),
+		max_tokens: integer("max_tokens"),
+		top_p: integer("top_p"),
+		frequency_penalty: integer("frequency_penalty"),
+		presence_penalty: integer("presence_penalty"),
+		// Priority: lower = higher priority
+		priority: integer("priority").default(1).notNull(),
+		enabled: boolean("enabled").default(true).notNull(),
+		created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+		updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+	},
+	(table) => [
+		index("model_configs_provider_idx").on(table.provider),
+		index("model_configs_priority_idx").on(table.priority),
+	]
+);
