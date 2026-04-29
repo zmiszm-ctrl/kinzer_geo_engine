@@ -14,6 +14,7 @@ import {
   BookOpen,
   ChevronDown,
   ChevronRight,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -26,6 +27,12 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  {
+    label: '平台总览',
+    href: '/overview',
+    icon: <LayoutDashboard className="h-4 w-4" />,
+    enabled: true,
+  },
   {
     label: '知识资产管理',
     href: '/knowledge',
