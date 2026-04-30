@@ -1,4 +1,5 @@
 import { AppSidebar } from '@/components/app-sidebar';
+import { ChatWidget } from '@/components/chat-widget';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -9,6 +10,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {children}
         </div>
       </main>
+      <ChatWidget />
     </div>
   );
 }
