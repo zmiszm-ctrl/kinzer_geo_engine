@@ -1,8 +1,20 @@
 import { NextRequest } from 'next/server';
 import { llmStream } from '@/lib/llm-provider';
+import fs from 'fs';
+import path from 'path';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const PROMPT_FILE = path.join(process.env.COZE_WORKSPACE_PATH || '/workspace/projects', 'chat-system-prompt.md');
+
+function loadSystemPrompt(): string {
+  try {
+    return fs.readFileSync(PROMPT_FILE, 'utf-8');
+  } catch {
+    return '你是 GEO 引擎平台的 AI 助手，专注于帮助企业优化内容在 AI 搜索引擎中的可见性和引用率。';
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,23 +25,11 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'messages is required' }, { status: 400 });
     }
 
-    // System prompt for GEO assistant
+    // Read system prompt from file
+    const systemPromptContent = loadSystemPrompt();
     const systemPrompt: { role: 'system'; content: string } = {
       role: 'system',
-      content: `你是 GEO 引擎平台的 AI 助手，专注于帮助企业优化内容在 AI 搜索引擎中的可见性和引用率。
-
-你的能力范围：
-1. **GEO 策略咨询** — 解答关于生成式引擎优化的问题，包括内容结构化、意图匹配、关键词策略等
-2. **内容优化建议** — 分析内容并提供提升 AI 搜索可见性的优化建议
-3. **意图分析** — 帮助用户理解不同搜索意图（信息型、导航型、商业型、交易型）的内容优化策略
-4. **平台功能指引** — 介绍 GEO 引擎平台的各项功能和使用方法
-5. **写作风格建议** — 针对小红书、公众号、头条等不同平台的内容风格提供建议
-
-回答要求：
-- 专业、简洁、实用
-- 优先提供可操作的建议
-- 涉及 GEO 相关概念时给出通俗解释
-- 如果问题超出范围，礼貌说明并引导回 GEO 话题`,
+      content: systemPromptContent,
     };
 
     const fullMessages = [systemPrompt, ...messages.map((m) => ({
