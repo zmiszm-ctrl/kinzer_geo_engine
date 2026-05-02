@@ -93,6 +93,13 @@ Desktop.ini
 # TypeScript
 *.tsbuildinfo
 
+# Sensitive files - API Keys
+model.md
+
+# Chat history (user data)
+chat-history/*.md
+!chat-history/.gitkeep
+
 # Misc
 .vercel
 .turbo
