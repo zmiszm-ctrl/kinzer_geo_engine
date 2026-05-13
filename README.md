@@ -3,7 +3,7 @@
 > Generative Engine Optimization — 帮助企业优化内容在 AI 搜索引擎中的可见性和引用率
 
 **版本**: MVP v0.1.0  
-**技术栈**: Next.js 16 + React 19 + TypeScript 5 + Tailwind CSS 4 + Supabase + shadcn/ui
+**技术栈**: Next.js 16 + React 19 + TypeScript 5 + Tailwind CSS 4 + SQLite + shadcn/ui
 
 ---
 
@@ -51,11 +51,11 @@
 ├─────────────────────────────────────────────────┤
 │                  API Routes                       │
 │  意图管理 / 写作引擎 / 对话 / 模型配置            │
-│  SSE 流式输出 + Supabase SDK 数据操作             │
+│  SSE 流式输出 + SQLite 本地数据操作               │
 ├──────────────┬──────────────────────────────────┤
 │   数据层      │         LLM 层                    │
-│  Supabase    │  智谱 (优先) → DeepSeek (降级)     │
-│  PostgreSQL  │  流式/非流式 + Thinking Mode        │
+│  SQLite      │  智谱 (优先) → DeepSeek (降级)     │
+│  better-sqlite3 │ 流式/非流式 + Thinking Mode        │
 └──────────────┴──────────────────────────────────┘
 ```
 
@@ -86,27 +86,21 @@ pnpm install
 创建 `.env.local` 文件：
 
 ```bash
-# Supabase 数据库（平台自动注入，本地开发需手动配置）
-COZE_SUPABASE_URL=https://your-project.supabase.co
-COZE_SUPABASE_ANON_KEY=your-anon-key
-COZE_SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# 无需额外环境变量配置
+# 数据库：SQLite（本地文件 data/geo.db，自动创建）
+# LLM API Key：通过「系统设置 > 模型配置」页面管理，或编辑 model.md 文件
 ```
 
-> **注意**: 在 Coze Coding 沙箱环境中，Supabase 变量由平台自动注入，无需手动配置。
+> **注意**: 项目使用 SQLite 本地数据库，零配置，无需安装和连接任何外部数据库服务。
 
 ### 步骤 4: 初始化数据库
 
-```bash
-# 执行数据库迁移（创建表结构）
-npx coze-coding-ai db upgrade
-
-# 插入种子数据（意图分类 + 模型配置）
-# 意图分类（13 条）：4 个 L1 + 9 个 L2 分类
-# 模型配置（2 条）：智谱 + DeepSeek 默认配置
-```
-
-种子数据 SQL 在首次 `db upgrade` 时通过 Drizzle schema 自动创建表结构。  
-如需手动插入种子数据，请参考 `src/storage/database/shared/schema.ts` 中的定义。
+数据库在首次启动时自动创建并初始化：
+- 自动创建 `data/geo.db` 文件
+- 自动建表：`intent_types`、`intents`、`generated_contents`、`model_configs`
+- 自动插入种子数据：
+  - 意图分类（13 条）：4 个 L1 + 9 个 L2 分类
+  - 模型配置（2 条）：智谱 + DeepSeek 默认配置
 
 ### 步骤 5: 配置 LLM 密钥
 
@@ -240,15 +234,12 @@ server {
 
 | 变量名 | 说明 | 必须 | 默认值 |
 |--------|------|------|--------|
-| `COZE_SUPABASE_URL` | Supabase 项目 URL | ✅ | — |
-| `COZE_SUPABASE_ANON_KEY` | Supabase 匿名密钥 | ✅ | — |
-| `COZE_SUPABASE_SERVICE_ROLE_KEY` | Supabase 服务端密钥（绕过 RLS） | ✅ | — |
-| `COZE_WORKSPACE_PATH` | 项目工作目录 | ❌ | `/workspace/projects` |
-| `DEPLOY_RUN_PORT` | 服务监听端口 | ❌ | `5000` |
-| `COZE_PROJECT_ENV` | 运行环境 `DEV`/`PROD` | ❌ | `DEV` |
-| `COZE_PROJECT_DOMAIN_DEFAULT` | 对外访问域名 | ❌ | — |
+| `COZE_WORKSPACE_PATH` | 项目工作目录 | ✅ | `/workspace/projects` |
+| `DEPLOY_RUN_PORT` | 服务监听端口 | ✅ | `5000` |
+| `COZE_PROJECT_ENV` | 运行环境 `DEV`/`PROD` | ✅ | `DEV` |
+| `COZE_PROJECT_DOMAIN_DEFAULT` | 对外访问域名 | ✅ | — |
 
-> 在 Coze Coding 沙箱中，所有 `COZE_` 前缀变量由平台自动注入。
+> 项目使用 SQLite 本地数据库，无需配置外部数据库连接。LLM API Key 通过 `model.md` 文件或「系统设置 > 模型配置」页面管理。
 
 ---
 
@@ -258,27 +249,19 @@ server {
 
 | 表名 | 说明 | 初始记录数 |
 |------|------|-----------|
-| `intent_types` | 意图分类体系 | 14 条（4 L1 + 10 L2） |
+| `intent_types` | 意图分类体系 | 13 条（4 L1 + 9 L2） |
 | `intents` | 用户意图列表 | 0 |
 | `generated_contents` | 生成内容存储 | 0 |
 | `model_configs` | 模型配置 | 2 条（智谱 + DeepSeek） |
 
 ### 数据操作规范
 
-- **Schema 定义**: 使用 Drizzle ORM（`src/storage/database/shared/schema.ts`）
-- **数据操作**: 必须使用 Supabase SDK（`supabase.from('table').select()...`）
-- **禁止**: 使用 Drizzle ORM 的 `db.select()` / `db.insert()` 等方法做数据操作
-- **RLS**: 所有表已启用 RLS，后端使用 service_role_key 绕过
-
-### 迁移命令
-
-```bash
-# 执行数据库迁移
-npx coze-coding-ai db upgrade
-
-# 查看迁移状态
-npx coze-coding-ai db status
-```
+- **数据库客户端**: 使用 `import { getDb } from '@/lib/db'` 获取实例
+- **查询**: `getDb().all(sql, params)` / `getDb().get(sql, params)` / `getDb().run(sql, params)`
+- **SQLite 限制**: 只能绑定 number/string/buffer/null，布尔值必须转为 0/1
+- **自增ID**: 使用 `lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab',abs(random()) % 4 + 1,1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))` 生成 UUID
+- **数据库文件位置**: `data/geo.db`（首次启动自动创建）
+- **重置数据库**: 删除 `data/geo.db` 后重启服务即可重建
 
 ---
 
@@ -378,14 +361,10 @@ for await (const chunk of stream) {
 │   ├── lib/
 │   │   ├── llm-provider.ts     # LLM Provider（智谱优先+DeepSeek降级）
 │   │   └── utils.ts            # cn() 工具函数
-│   └── storage/
-│       └── database/
-│           ├── shared/
-│           │   ├── schema.ts   # Drizzle 表结构定义
-│           │   └── relations.ts # Drizzle 关系定义
-│           └── supabase-client.ts # Supabase SDK 客户端
 ├── chat-system-prompt.md       # 对话系统提示词（可编辑）
 ├── chat-history/               # 对话记录存储（按天保存 MD 文件）
+├── data/
+│   └── geo.db                  # SQLite 数据库文件（自动创建）
 ├── scripts/
 │   ├── build.sh                # 生产构建脚本
 │   ├── start.sh                # 生产启动脚本
@@ -472,11 +451,11 @@ for await (const chunk of stream) {
 ### 数据库连接失败
 
 ```bash
-# 检查环境变量是否正确
-echo $COZE_SUPABASE_URL
-echo $COZE_SUPABASE_SERVICE_ROLE_KEY
+# 检查数据库文件
+ls -la data/geo.db
 
-# 数据操作必须使用 Supabase SDK，不要用 Drizzle ORM
+# 重置数据库：删除后重启会自动重建
+rm data/geo.db
 ```
 
 ### LLM 调用失败
@@ -522,8 +501,7 @@ pnpm lint                 # ESLint 检查
 pnpm ts-check             # TypeScript 类型检查
 
 # 数据库
-npx coze-coding-ai db upgrade    # 执行数据库迁移
-npx coze-coding-ai db status     # 查看迁移状态
+rm data/geo.db && pnpm dev    # 重置数据库（自动重建+种子数据）
 
 # 清理
 rm -rf .next              # 清除构建缓存
