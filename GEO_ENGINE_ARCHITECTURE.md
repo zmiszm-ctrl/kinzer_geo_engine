@@ -120,8 +120,10 @@ GEO（Generative Engine Optimization）引擎平台是一款面向企业的**AI�
 | 多格式导入 | 支持PDF/Word/Excel/PPT/Markdown/HTML/TXT/JSON | P0 | 文件解析库、OCR识别 |
 
 
-| URL批量抓取 | 批量抓取网页内容，自动提取正文 | P0 | 爬虫框架、正文提取算法 |
+| URL批量抓取 | 批量抓取网页内容，自动提取正文 | P1 | 爬虫框架、正文提取算法 |
+
 | API数据同步 | 对接飞书/Notion/Confluence/WP | P1 | OAuth2.0、多API适配器 |
+
 | 文档库管理 | 文件夹分类、标签、全文搜索 | P0 | ES索引、树形结构 |
 | 智能清洗 | 去除广告/导航/页眉页脚 | P0 | DOM树解析、ML噪音识别 |
 | 内容去重 | 基于SimHash检测重复内容 | P1 | SimHash、Minhash |

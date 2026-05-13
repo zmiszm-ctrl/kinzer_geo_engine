@@ -1,34 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
+// POST /api/writing/save - Save generated content
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { title, content, style, intent_ids } = body;
+    const { title, content, style, intent_ids, content_type, model_id, quality_score } = body;
 
-    if (!content) {
-      return NextResponse.json({ error: 'content is required' }, { status: 400 });
+    if (!title || !content) {
+      return NextResponse.json({ error: 'title and content are required' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
-      .from('generated_contents')
-      .insert({
-        title: title || '未命名内容',
-        content,
-        content_type: style,
-        intent_ids: intent_ids || [],
-        style: style || 'xiaohongshu',
-        model_id: 'doubao-seed-2-0-pro-260215',
-        status: 'draft',
-      })
-      .select()
-      .single();
+    const db = getDb();
+    const id = crypto.randomUUID();
 
-    if (error) throw new Error(`保存失败: ${error.message}`);
+    db.prepare(`
+      INSERT INTO generated_contents (id, title, content, content_type, intent_ids, style, model_id, quality_score, version, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'draft')
+    `).run(
+      id,
+      title,
+      content,
+      content_type || style || 'article',
+      JSON.stringify(intent_ids || []),
+      style || 'default',
+      model_id || null,
+      quality_score || null
+    );
 
-    return NextResponse.json({ content: data });
+    const savedContent = db.prepare('SELECT * FROM generated_contents WHERE id = ?').get(id);
+    return NextResponse.json({ content: savedContent });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

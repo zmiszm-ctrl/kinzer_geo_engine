@@ -86,6 +86,7 @@ const navItems: NavItem[] = [
     enabled: true,
     children: [
       { label: '模型配置', href: '/settings/model-config', icon: <Settings className="h-4 w-4" />, enabled: true },
+      { label: '数据库管理', href: '/settings/database', icon: <Database className="h-4 w-4" />, enabled: true },
     ],
   },
 ];

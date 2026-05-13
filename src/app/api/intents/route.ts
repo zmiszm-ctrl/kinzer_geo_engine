@@ -1,93 +1,106 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
+// POST /api/intents - Batch create intents
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-
-    // Batch create from AI mining or single create
-    const intentsData = body.intents as {
+    const { intents } = body as { intents: Array<{
       name: string;
-      query?: string;
+      query: string;
       intent_type_code?: string;
+      intent_type_id?: string;
       keywords?: string[];
-    }[];
+      tags?: string[];
+      source?: string;
+    }> };
 
-    if (!intentsData || !Array.isArray(intentsData)) {
+    if (!intents || !Array.isArray(intents) || intents.length === 0) {
       return NextResponse.json({ error: 'intents array is required' }, { status: 400 });
     }
 
-    // Resolve intent_type_code to intent_type_id
-    const { data: allTypes, error: typeError } = await supabase
-      .from('intent_types')
-      .select('id, code');
+    const db = getDb();
+    const saved: Record<string, unknown>[] = [];
 
-    if (typeError) throw new Error(`查询分类失败: ${typeError.message}`);
+    const insertStmt = db.prepare(`
+      INSERT INTO intents (id, name, query, intent_type_id, level, parent_id, keywords, priority, tags, source, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-    const typeCodeMap = Object.fromEntries(
-      (allTypes || []).map((t: { id: string; code: string }) => [t.code, t.id])
-    );
+    for (const intent of intents) {
+      let intentTypeId = intent.intent_type_id || null;
 
-    const values = intentsData.map((item) => ({
-      name: item.name,
-      query: item.query || item.name,
-      intent_type_id: item.intent_type_code ? typeCodeMap[item.intent_type_code] || null : null,
-      level: 1,
-      keywords: item.keywords || [],
-      priority: 0,
-      tags: [],
-      source: 'ai',
-      status: 'active',
-    }));
+      // Resolve intent_type_code to intent_type_id
+      if (!intentTypeId && intent.intent_type_code) {
+        const typeRow = db.prepare('SELECT id FROM intent_types WHERE code = ?').get(intent.intent_type_code) as { id: string } | undefined;
+        if (typeRow) intentTypeId = typeRow.id;
+      }
 
-    const { data, error } = await supabase
-      .from('intents')
-      .insert(values)
-      .select();
+      const id = crypto.randomUUID();
+      insertStmt.run(
+        id,
+        intent.name,
+        intent.query || '',
+        intentTypeId,
+        1,
+        null,
+        JSON.stringify(intent.keywords || []),
+        0,
+        JSON.stringify(intent.tags || []),
+        intent.source || 'ai',
+        'active'
+      );
+      saved.push(db.prepare('SELECT * FROM intents WHERE id = ?').get(id) as Record<string, unknown>);
+    }
 
-    if (error) throw new Error(`创建意图失败: ${error.message}`);
-
-    return NextResponse.json({ saved: data });
+    return NextResponse.json({ saved });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
+// PUT /api/intents - Update intent
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, name, query, intent_type_id } = body;
+    const { id, name, query, intent_type_id, keywords, tags, priority, status } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 });
     }
 
-    const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
-    if (name !== undefined) updateData.name = name;
-    if (query !== undefined) updateData.query = query;
-    if (intent_type_id !== undefined) updateData.intent_type_id = intent_type_id;
+    const db = getDb();
 
-    const { data, error } = await supabase
-      .from('intents')
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw new Error(`更新意图失败: ${error.message}`);
-
-    if (!data) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const existing = db.prepare('SELECT * FROM intents WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!existing) {
+      return NextResponse.json({ error: 'Intent not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ intent: data });
+    const updates: string[] = [];
+    const values: unknown[] = [];
+
+    if (name !== undefined) { updates.push('name = ?'); values.push(name); }
+    if (query !== undefined) { updates.push('query = ?'); values.push(query); }
+    if (intent_type_id !== undefined) { updates.push('intent_type_id = ?'); values.push(intent_type_id); }
+    if (keywords !== undefined) { updates.push('keywords = ?'); values.push(JSON.stringify(keywords)); }
+    if (tags !== undefined) { updates.push('tags = ?'); values.push(JSON.stringify(tags)); }
+    if (priority !== undefined) { updates.push('priority = ?'); values.push(priority); }
+    if (status !== undefined) { updates.push('status = ?'); values.push(status); }
+    updates.push("updated_at = datetime('now', 'localtime')");
+
+    values.push(id);
+    db.prepare(`UPDATE intents SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+    const intent = db.prepare('SELECT * FROM intents WHERE id = ?').get(id);
+    return NextResponse.json({ intent });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
+// DELETE /api/intents - Delete intent
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -97,13 +110,16 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 });
     }
 
-    const { error } = await supabase.from('intents').delete().eq('id', id);
+    const db = getDb();
+    const existing = db.prepare('SELECT id FROM intents WHERE id = ?').get(id);
+    if (!existing) {
+      return NextResponse.json({ error: 'Intent not found' }, { status: 404 });
+    }
 
-    if (error) throw new Error(`删除意图失败: ${error.message}`);
-
+    db.prepare('DELETE FROM intents WHERE id = ?').run(id);
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

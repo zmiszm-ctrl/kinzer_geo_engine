@@ -3,7 +3,7 @@
  * 支持流式（SSE）和非流式调用
  */
 
-import { supabase } from '@/lib/db';
+import { getDb } from '@/lib/db';
 
 // ── Types ──────────────────────────────────────────────
 interface ChatMessage {
@@ -80,25 +80,24 @@ async function loadProviders(): Promise<ProviderConfig[]> {
   }
 
   try {
-    const { data, error } = await supabase
-      .from('model_configs')
-      .select('*')
-      .eq('enabled', true)
-      .order('priority', { ascending: true });
+    const db = getDb();
+    const rows = db.prepare(
+      'SELECT * FROM model_configs WHERE enabled = 1 ORDER BY priority ASC'
+    ).all() as Record<string, unknown>[];
 
-    if (error || !data || data.length === 0) {
+    if (!rows || rows.length === 0) {
       console.warn('[LLM] DB config unavailable, using fallback defaults');
       return FALLBACK_CONFIGS;
     }
 
-    const providers: ProviderConfig[] = data.map((row: Record<string, unknown>) => ({
+    const providers: ProviderConfig[] = rows.map((row) => ({
       name: row.provider as string,
       baseURL: (row.base_url as string) || (row.provider === 'zhipu'
         ? 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
         : 'https://api.deepseek.com/chat/completions'),
       apiKey: (row.api_key as string) || '',
       model: row.model as string,
-      thinkingEnabled: row.thinking_enabled as boolean,
+      thinkingEnabled: Boolean(row.thinking_enabled),
       reasoningEffort: row.reasoning_effort as string | null,
       temperature: row.temperature as number | null,
       maxTokens: row.max_tokens as number | null,
